@@ -2,13 +2,20 @@
     <string name="app_name">RecommendatorClient</string>
     <string name="action_settings">Настройки</string>
     <string name="action_history">История поиска</string>
+
     <!-- Strings used for fragments for navigation -->
     <string name="first_fragment_label">Рекомендатор</string>
     <string name="second_fragment_label">История поиска</string>
     <string name="next">Следующий</string>
     <string name="previous">Предыдущий</string>
 
+    <!-- menu -->
     <string name="search">Поиск</string>
     <string name="action_saved">Сохраненные</string>
     <string name="to_search_history">История поиска</string>
+
+    <!-- recommendation_item -->
+    <string name="prompt_product_name">Товар</string>
+    <string name="prompt_shop_name">Магазин</string>
+    <string name="prompt_price">Цена</string>
 </resources>

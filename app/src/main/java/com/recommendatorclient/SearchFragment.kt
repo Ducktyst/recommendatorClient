@@ -1,15 +1,23 @@
 package com.recommendatorclient
 
+import android.content.Intent
+import android.net.Uri
 import android.os.Bundle
 import android.util.Log
 import android.view.LayoutInflater
 import android.view.View
 import android.view.ViewGroup
-import android.widget.Toast
+import androidx.appcompat.app.AlertDialog
 import androidx.fragment.app.Fragment
+import androidx.lifecycle.ViewModelProvider
 import androidx.navigation.fragment.findNavController
+import androidx.recyclerview.widget.LinearLayoutManager
 import com.recommendatorclient.databinding.FragmentSearchBinding
+import com.recommendatorclient.recommendation_service.ApiClient
+import com.recommendatorclient.recommendation_service.models.Recommendation
+import com.recommendatorclient.recommendator_activity.*
 import io.ktor.client.*
+import io.ktor.client.call.*
 import io.ktor.client.engine.cio.*
 import io.ktor.client.plugins.*
 import io.ktor.client.plugins.contentnegotiation.*
@@ -28,6 +36,11 @@ class SearchFragment : Fragment() {
 
     private var _binding: FragmentSearchBinding? = null
 
+    private lateinit var _viewModel: RecommendatorViewModel
+    private lateinit var mAdapter: RecommendationsListViewAdapter
+
+    private var apiClient = ApiClient()
+
     // This property is only valid between onCreateView and
     // onDestroyView.
     private val binding get() = _binding!!
@@ -39,6 +52,8 @@ class SearchFragment : Fragment() {
 
         _binding = FragmentSearchBinding.inflate(inflater, container, false)
         initClickListeners()
+        initRecyclerView()
+
         return binding.root
     }
 
@@ -47,10 +62,43 @@ class SearchFragment : Fragment() {
             updateRecommendationsBarcode(v)
         }
         _binding!!.btnPing.setOnClickListener { v: View ->
-            pingRecommendationsService()
+            apiClient.pingRecommendationsService()
         }
         _binding!!.btnPingGoogle.setOnClickListener { v: View ->
-            pingGoogle()
+            apiClient.pingGoogle()
+        }
+    }
+
+    private fun initRecyclerView() {
+        _viewModel = ViewModelProvider(this).get(RecommendatorViewModel::class.java)
+
+        // recyclerView
+        val rv = _binding?.rvRecommendations
+        rv?.setHasFixedSize(true)
+        // use a linear layout manager
+        val mLayoutManager = LinearLayoutManager(activity?.applicationContext)
+        rv?.layoutManager = mLayoutManager
+
+        // Обработка нажатий
+        rv?.addOnItemTouchListener(
+            RecyclerTouchListener(context, rv, object : ClickListener {
+                override fun onClick(view: View?, position: Int) {
+                    val recommendation: RecommendationModel? = mAdapter.items.getOrNull(position)
+                    if (recommendation?.url != null) {
+                        showUrlPopup(recommendation.url!!)
+                    }
+                }
+
+                override fun onLongClick(view: View?, position: Int) {}
+            })
+        )
+
+        mAdapter = RecommendationsListViewAdapter(ArrayList<RecommendationModel>())
+        rv?.adapter = mAdapter
+
+        // buttons
+        _binding?.btnSearch?.setOnClickListener { view ->
+            updateRecommendationsBarcode(view)
         }
     }
 
@@ -72,8 +120,8 @@ class SearchFragment : Fragment() {
         if (barcode == "") {
             return
         }
-        getRecommendationsBarcode(barcode)
 
+        getRecommendationsBarcode(barcode)
     }
 
     fun getRecommendationsBarcode(barcode: String) {
@@ -82,14 +130,10 @@ class SearchFragment : Fragment() {
         val host: String = "https://0e9c-95-68-232-253.eu.ngrok.io" // TODO: ...
         val url = "$host/api/recommendations/{barcode}".replace("{" + "barcode" + "}", barcode)
 
+        disableButtons()
         val coroutineScope = CoroutineScope(Dispatchers.Default)
         try {
             coroutineScope.launch(Dispatchers.Default) {
-                val j1 = launch(Dispatchers.Main) {
-                    Toast.makeText(context, "call $url", Toast.LENGTH_LONG).show()
-                }
-                j1.join()
-
                 val job = launch(Dispatchers.IO) {
                     val client = HttpClient(CIO) {
                         install(HttpTimeout) {
@@ -106,12 +150,30 @@ class SearchFragment : Fragment() {
                     }
 
                     val resp: HttpResponse = client.get(url)
+                    // deserialize to ArrayList<Recommendation>
+                    var respRecommendations: ArrayList<Recommendation> = resp.body()
 
                     client.close()
 
                     val j2 = launch(Dispatchers.Main) {
-                        Log.d("Track", "pong")
-                        Toast.makeText(context, "resp ${resp.status}", Toast.LENGTH_LONG).show()
+                        Log.d("Track", "pong barcode" + "resp ${resp.status}")
+
+                        var recommendations = ArrayList<RecommendationModel>()
+                        if (respRecommendations != null) {
+                            for (r in respRecommendations) {
+                                recommendations.add(
+                                    RecommendationModel(
+                                        productName = r.articul,
+                                        shopName = r.shopName,
+                                        price = r.price.toString(),
+                                        url = r.url,
+                                    )
+                                )
+                            }
+                        }
+                        _viewModel.setRecommendations(recommendations)
+                        mAdapter.setRecommendations(recommendations)
+                        activateButtons()
                     }
                     j2.join()
                 }
@@ -126,78 +188,34 @@ class SearchFragment : Fragment() {
         Log.d("Track", "getRecommendationsBarcode finish")
     }
 
-    fun pingRecommendationsService() {
-        Log.d("Track", "pingRecommendationsService start")
-        val host: String = "https://0e9c-95-68-232-253.eu.ngrok.io" // TODO: ...
-
-        var coroutineScope = CoroutineScope(Dispatchers.Default)
-
-        var url = "$host/api/ping"
-
-        try {
-            coroutineScope.launch(Dispatchers.Default) {
-                val j1 = launch(Dispatchers.Main) {
-                    Toast.makeText(context, "ping api $url", Toast.LENGTH_LONG).show()
-                }
-                j1.join()
-
-                val job = launch(Dispatchers.IO) {
-                    val client = HttpClient(CIO) {
-                        install(ContentNegotiation) {
-                            gson()
-                        }
-                    }
-
-                    val resp: HttpResponse = client.get(url)
-                    client.close()
-
-                    val j2 = launch(Dispatchers.Main) {
-                        Log.d("Track", "pong")
-                        Toast.makeText(context, "pong ${resp.status}", Toast.LENGTH_LONG).show()
-                    }
-                    j2.join()
-                }
-
-                job.join()
+    fun showUrlPopup(itemUrl: String) {
+        val builder = AlertDialog.Builder(this.requireContext())
+        builder
+            .setTitle("Товар")
+            .setMessage("Карточка товара в магазине")
+            .setPositiveButton("Открыть ссылку в браузере") { dialog, id ->
+                val browserIntent: Intent = Intent(Intent.ACTION_VIEW, Uri.parse(itemUrl));
+                startActivity(browserIntent)
+                dialog.cancel()
             }
-        } catch (e: IOException) {
-            e.printStackTrace()
-        }
-        Log.d("Track", "pingRecommendationsService finish")
+            .setNegativeButton("Отмена") { dialog, id ->
+                dialog.cancel()
+            }
+
+
+        builder.create()
+        builder.show()
     }
 
-    fun pingGoogle() {
-        val coroutineScope = CoroutineScope(Dispatchers.Default)
+    fun disableButtons() {
+        _binding?.btnSearch?.isActivated = false
+        _binding?.btnPing?.isActivated = false
+        _binding?.btnPingGoogle?.isActivated = false
+    }
 
-        val url = "https://google.com"
-
-        coroutineScope.launch(Dispatchers.Default) {
-            try {
-                val j1 = launch(Dispatchers.Main) {
-                    Log.d("Track", "ping google")
-
-                    Toast.makeText(context, "ping api $url", Toast.LENGTH_LONG).show()
-                }
-                j1.join()
-
-                val job = launch(Dispatchers.IO) {
-                    val client = HttpClient(CIO) {}
-
-                    val resp: HttpResponse = client.get(url)
-
-                    client.close()
-
-                    val j2 = launch(Dispatchers.Main) {
-                        Log.d("Track", "pong google")
-                        Toast.makeText(context, "pong google ${resp.status}", Toast.LENGTH_LONG).show()
-                    }
-                    j2.join()
-                }
-
-                job.join()
-            } catch (e: IOException) {
-                e.printStackTrace()
-            }
-        }
+    fun activateButtons() {
+        _binding?.btnSearch?.isActivated = true
+        _binding?.btnPing?.isActivated = true
+        _binding?.btnPingGoogle?.isActivated = true
     }
 }
