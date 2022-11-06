@@ -1,26 +1,49 @@
 package com.recommendatorclient.recommendation_service
 
+import android.graphics.Bitmap
 import android.util.Log
-import android.widget.Toast
+import com.recommendatorclient.recommendation_service.models.Recommendation
 import io.ktor.client.*
+import io.ktor.client.call.*
 import io.ktor.client.engine.cio.*
 import io.ktor.client.plugins.*
 import io.ktor.client.plugins.contentnegotiation.*
 import io.ktor.client.request.*
+import io.ktor.client.request.forms.*
 import io.ktor.client.statement.*
+import io.ktor.http.*
 import io.ktor.serialization.gson.*
+import io.ktor.util.*
+import io.ktor.utils.io.core.*
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
+import okhttp3.MediaType
+import okhttp3.internal.closeQuietly
+import java.io.ByteArrayOutputStream
 import java.io.IOException
+import kotlin.io.use
 
-class ApiClient(var host: String = "https://0e9c-95-68-232-253.eu.ngrok.io") {
+class RecommendatorApiClient(var host: String = "https://08b3-87-76-11-149.eu.ngrok.io") {
+    val client = HttpClient(CIO) {
+        install(HttpTimeout) {
+            requestTimeoutMillis = 20 * 60000 // N*min
+            socketTimeoutMillis = 20 * 60000
+            connectTimeoutMillis = 20 * 60000
+        }
+        engine {
+            requestTimeout = 0 // 0 to disable, or a millisecond value to fit your needs
+        }
+        install(ContentNegotiation) {
+            gson()
+        }
+    }
+    val coroutineScope = CoroutineScope(Dispatchers.Default)
 
-    fun getRecommendationsBarcode(barcode: String) {
+    fun recommendationsBarcodeGet(barcode: String) {
         Log.d("Track", "getRecommendationsBarcode start")
         val url = "$host/api/recommendations/{barcode}".replace("{barcode}", barcode)
 
-        val coroutineScope = CoroutineScope(Dispatchers.Default)
         try {
             coroutineScope.launch(Dispatchers.Default) {
                 val job = launch(Dispatchers.IO) {
@@ -75,7 +98,7 @@ class ApiClient(var host: String = "https://0e9c-95-68-232-253.eu.ngrok.io") {
         Log.d("Track", "getRecommendationsBarcode finish")
     }
 
-    fun pingRecommendationsService() {
+    fun ping() {
         var coroutineScope = CoroutineScope(Dispatchers.Default)
         var url = "$host/api/ping"
 
@@ -105,18 +128,53 @@ class ApiClient(var host: String = "https://0e9c-95-68-232-253.eu.ngrok.io") {
         Log.d("Track", "pingRecommendationsService finish")
     }
 
+    @OptIn(InternalAPI::class)
+    suspend fun recommendationsPost(img: Bitmap): ArrayList<Recommendation> {
+        // TOOD: error handling
+        val url = "$host/api/recommendations"
+
+        val stream = ByteArrayOutputStream()
+        img.compress(Bitmap.CompressFormat.PNG, 100, stream)
+        val image = stream.toByteArray()
+        Log.d("Track", "$url")
+        val resp: HttpResponse = client.request {
+            url(url)
+            method = HttpMethod.Post
+            body = MultiPartFormDataContent(
+                formData {
+                    append(
+                        "content",
+                        image,
+                        Headers.build {
+                            append(HttpHeaders.ContentType, "image/png") // Mime type required
+                            append(HttpHeaders.ContentDisposition, "filename=\"img.png\"")
+                            append(HttpHeaders.Accept, "application/json")
+                        }
+                    )
+                }
+            )
+        }
+        Log.d("Track", "resp.status " + resp.status)
+        Log.d("Track", "resp " + resp.bodyAsText())
+
+
+        if (resp.status != HttpStatusCode.OK) {
+            return ArrayList<Recommendation>() // TODO: throw err
+        }
+
+        val respRecommendations: ArrayList<Recommendation> = resp.body()
+        return respRecommendations
+    }
+
+
     fun pingGoogle() {
-        val coroutineScope = CoroutineScope(Dispatchers.Default)
 
         val url = "https://google.com"
 
         coroutineScope.launch(Dispatchers.Default) {
             try {
                 val job = launch(Dispatchers.IO) {
-                    val client = HttpClient(CIO) {}
-
                     val resp: HttpResponse = client.get(url)
-
                     client.close()
 
                     val j2 = launch(Dispatchers.Main) {
@@ -131,4 +189,5 @@ class ApiClient(var host: String = "https://0e9c-95-68-232-253.eu.ngrok.io") {
             }
         }
     }
+
 }
