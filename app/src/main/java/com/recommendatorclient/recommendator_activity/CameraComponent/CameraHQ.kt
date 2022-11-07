@@ -74,15 +74,15 @@ class CameraHQ(val activity: FragmentActivity, val apiClient: RecommendatorApiCl
 
     fun onTakePhotoClick(startForResult: ActivityResultLauncher<Intent>) {
         val takePictureIntent = Intent(MediaStore.ACTION_IMAGE_CAPTURE)
-//        photoFile = getPhotoFile(FILE_NAME)
+
         val storageDirectory = activity.getExternalFilesDir(Environment.DIRECTORY_PICTURES)
-        val photoFile: File = File.createTempFile(FILE_NAME, ".jpg", storageDirectory)
+        photoFile = File.createTempFile(FILE_NAME, ".jpg", storageDirectory)
 
         // This DOESN'T work for API >= 24 (starting 2016)
         // takePictureIntent.putExtra(MediaStore.EXTRA_OUTPUT, photoFile)
         Log.d("Track", photoFile.absolutePath)
-        val fileProvider = FileProvider.getUriForFile(activity.applicationContext,
-            activity.packageName + ".provider", photoFile)
+        val fileProvider = FileProvider.getUriForFile(activity,
+            "com.recommendatorclient.provider", photoFile)
         Log.d("Track", fileProvider.path.toString())
         takePictureIntent.putExtra(MediaStore.EXTRA_OUTPUT, fileProvider)
 //         takePictureIntent.putExtra(MediaStore.EXTRA_OUTPUT, photoFile)
@@ -93,14 +93,6 @@ class CameraHQ(val activity: FragmentActivity, val apiClient: RecommendatorApiCl
             Toast.makeText(activity.applicationContext, "Не удалось запустить камеру", Toast.LENGTH_SHORT).show()
         }
     }
-
-//    fun getPhotoFile(fileName: String): File {
-//        // Use `getExternalFilesDir` on Context to access package-specific directories
-////        val storageDirectory = activity.getExternalFilesDir(Environment.DIRECTORY_PICTURES)
-//        val file: File = File.createTempFile(fileName, ".jpg")
-//        // or create new file?
-//        return file
-//    }
 
     fun getTakenPhoto(): Bitmap? {
         if (!this::photoFile.isInitialized) {
@@ -115,7 +107,7 @@ class CameraHQ(val activity: FragmentActivity, val apiClient: RecommendatorApiCl
             return null
         }
         val fileProvider = FileProvider.getUriForFile(activity.applicationContext,
-            activity.packageName + ".provider", photoFile)
+            "com.recommendatorclient.provider", photoFile)
 
         val bitmapImg = BitmapFactory.decodeFile(fileProvider.path)
         return bitmapImg

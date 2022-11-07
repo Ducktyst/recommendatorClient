@@ -2,6 +2,7 @@ package com.recommendatorclient
 
 import android.app.Activity
 import android.content.Intent
+import android.graphics.Bitmap
 import android.graphics.BitmapFactory
 import android.net.Uri
 import android.os.Bundle
@@ -32,9 +33,11 @@ import io.ktor.serialization.gson.*
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
+import java.io.File
 import java.io.FileNotFoundException
 import java.io.IOException
 
+lateinit var photoFile: File
 
 /**
  * A simple [Fragment] subclass as the default destination in the navigation.
@@ -53,6 +56,9 @@ class SearchFragment : Fragment() {
     private var mCurrentPhotoPath: String = ""
 
     private lateinit var cameraHQ: CameraHQ
+
+    private val FILE_NAME = "barcode_photo"
+    private val CAMERA_REQ_CODE = 1
 
     // This property is only valid between onCreateView and
     // onDestroyView.
@@ -92,17 +98,24 @@ class SearchFragment : Fragment() {
 
         startForResult = registerForActivityResult(ActivityResultContracts.StartActivityForResult())
         { result: ActivityResult ->
-            val takenImage = cameraHQ.getFileProviderImg()
-
-            _binding?.imageView?.setImageBitmap(takenImage)
+//            val takenImage = cameraHQ.getTakenPhoto()
 //            _binding?.imageView?.isEnabled = true
 
             cameraIntentOnResult(result)
             return@registerForActivityResult
         }
-
-
     }
+
+//    override fun onActivityResult(requestCode: Int, resultCode: Int, data: Intent?) {
+//        if (requestCode == CAMERA_REQ_CODE && resultCode == Activity.RESULT_OK) {
+//            val takenImage = data?.extras?.get("data") as Bitmap
+//            val takenImage = BitmapFactory.decodeFile(photoFile.absolutePath)
+//            binding.imageView.setImageBitmap(takenImage)
+//        } else {
+//            super.onActivityResult(requestCode, resultCode, data)
+//        }
+//
+//    }
 
     private fun cameraIntentOnResult(result: ActivityResult) {
         Log.d("Track", "recommendationsPost start")
@@ -111,8 +124,7 @@ class SearchFragment : Fragment() {
             return
         }
 
-//        val bitmapImg = cameraHQ.getTakenPhoto()
-        val bitmapImg = cameraHQ.getFileProviderImg()
+        val bitmapImg = cameraHQ.getTakenPhoto()
         if (bitmapImg == null) {
             Log.d("Track", "bitmapImg == null")
             return
