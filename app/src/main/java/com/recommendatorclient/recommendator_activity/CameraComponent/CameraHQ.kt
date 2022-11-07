@@ -1,6 +1,5 @@
 package com.recommendatorclient.recommendator_activity.CameraComponent
 
-import android.app.Activity
 import android.content.ActivityNotFoundException
 import android.content.Intent
 import android.graphics.Bitmap
@@ -11,9 +10,7 @@ import android.provider.MediaStore
 import android.provider.Settings
 import android.util.Log
 import android.widget.Toast
-import androidx.activity.result.ActivityResult
 import androidx.activity.result.ActivityResultLauncher
-import androidx.activity.result.contract.ActivityResultContracts
 import androidx.appcompat.app.AlertDialog
 import androidx.core.content.FileProvider
 import androidx.fragment.app.FragmentActivity
@@ -22,19 +19,12 @@ import com.karumi.dexter.MultiplePermissionsReport
 import com.karumi.dexter.PermissionToken
 import com.karumi.dexter.listener.PermissionRequest
 import com.karumi.dexter.listener.multi.MultiplePermissionsListener
-import com.recommendatorclient.databinding.FragmentSearchBinding
 import com.recommendatorclient.recommendation_service.RecommendatorApiClient
-import com.recommendatorclient.recommendation_service.models.Recommendation
-import io.ktor.client.call.*
-import kotlinx.coroutines.CoroutineScope
-import kotlinx.coroutines.Dispatchers
-import kotlinx.coroutines.launch
 import java.io.File
-import java.io.FileNotFoundException
 
 class CameraHQ(val activity: FragmentActivity, val apiClient: RecommendatorApiClient) {
     lateinit var photoFile: File
-    private val FILE_NAME = "barcode_photo.png"
+    private val FILE_NAME = "barcode_photo"
 
     fun checkCameraPermission() {
         Dexter.withContext(activity.applicationContext)
@@ -46,7 +36,7 @@ class CameraHQ(val activity: FragmentActivity, val apiClient: RecommendatorApiCl
                     override fun onPermissionsChecked(report: MultiplePermissionsReport?) {
                         report?.let {
                             if (report.areAllPermissionsGranted()) {
-//                                camera()
+//                                onTakePhotoClick()
                             } else {
                                 showRotationalDialogForPermission()
                             }
@@ -82,27 +72,20 @@ class CameraHQ(val activity: FragmentActivity, val apiClient: RecommendatorApiCl
             }.show()
     }
 
-    fun getIntentForCamera() {
-
-    }
-
-    fun getPhotoFile(fileName: String): File {
-        // Use `getExternalFilesDir` on Context to access package-specific directories
-        val storageDirectory = activity.getExternalFilesDir(Environment.DIRECTORY_PICTURES)
-        return File.createTempFile(fileName, ".jpg", storageDirectory)
-    }
-
     fun onTakePhotoClick(startForResult: ActivityResultLauncher<Intent>) {
         val takePictureIntent = Intent(MediaStore.ACTION_IMAGE_CAPTURE)
-        photoFile = getPhotoFile(FILE_NAME)
+//        photoFile = getPhotoFile(FILE_NAME)
+        val storageDirectory = activity.getExternalFilesDir(Environment.DIRECTORY_PICTURES)
+        val photoFile: File = File.createTempFile(FILE_NAME, ".jpg", storageDirectory)
+
         // This DOESN'T work for API >= 24 (starting 2016)
         // takePictureIntent.putExtra(MediaStore.EXTRA_OUTPUT, photoFile)
-
-        val fileProvider = FileProvider.getUriForFile(
-            activity.applicationContext,
-            activity.packageName + ".provider",
-            photoFile)
+        Log.d("Track", photoFile.absolutePath)
+        val fileProvider = FileProvider.getUriForFile(activity.applicationContext,
+            activity.packageName + ".provider", photoFile)
+        Log.d("Track", fileProvider.path.toString())
         takePictureIntent.putExtra(MediaStore.EXTRA_OUTPUT, fileProvider)
+//         takePictureIntent.putExtra(MediaStore.EXTRA_OUTPUT, photoFile)
 
         if (takePictureIntent.resolveActivity(activity.packageManager) != null) {
             startForResult.launch(takePictureIntent)
@@ -111,11 +94,32 @@ class CameraHQ(val activity: FragmentActivity, val apiClient: RecommendatorApiCl
         }
     }
 
-    fun getTakenPhoto(): Bitmap{
+//    fun getPhotoFile(fileName: String): File {
+//        // Use `getExternalFilesDir` on Context to access package-specific directories
+////        val storageDirectory = activity.getExternalFilesDir(Environment.DIRECTORY_PICTURES)
+//        val file: File = File.createTempFile(fileName, ".jpg")
+//        // or create new file?
+//        return file
+//    }
+
+    fun getTakenPhoto(): Bitmap? {
+        if (!this::photoFile.isInitialized) {
+            return null
+        }
         val bitmapImg = BitmapFactory.decodeFile(photoFile.absolutePath)
         return bitmapImg
     }
 
+    fun getFileProviderImg(): Bitmap? {
+        if (!this::photoFile.isInitialized) {
+            return null
+        }
+        val fileProvider = FileProvider.getUriForFile(activity.applicationContext,
+            activity.packageName + ".provider", photoFile)
+
+        val bitmapImg = BitmapFactory.decodeFile(fileProvider.path)
+        return bitmapImg
+    }
 //
 //    private fun disableButtons(_binding: FragmentSearchBinding?) {
 //        _binding?.btnSearch?.isActivated = false

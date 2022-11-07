@@ -41,7 +41,6 @@ import java.io.IOException
  */
 class SearchFragment : Fragment() {
 
-    private val FILE_NAME: String = "FILE_NAME.png"
     private var _binding: FragmentSearchBinding? = null
 
     private lateinit var _viewModel: RecommendatorViewModel
@@ -68,7 +67,7 @@ class SearchFragment : Fragment() {
 
         initClickListeners()
         initRecyclerView()
-        _binding?.imageView?.isEnabled = false
+//        _binding?.imageView?.isEnabled = false
 
         return binding.root
     }
@@ -85,17 +84,24 @@ class SearchFragment : Fragment() {
         }
 
         // camera
-        cameraHQ.checkCameraPermission()
+//        cameraHQ.checkCameraPermission()
+
+        _binding!!.btnSearchByPhoto.setOnClickListener { v: View ->
+            cameraHQ.onTakePhotoClick(startForResult)
+        }
 
         startForResult = registerForActivityResult(ActivityResultContracts.StartActivityForResult())
         { result: ActivityResult ->
+            val takenImage = cameraHQ.getFileProviderImg()
+
+            _binding?.imageView?.setImageBitmap(takenImage)
+//            _binding?.imageView?.isEnabled = true
+
             cameraIntentOnResult(result)
             return@registerForActivityResult
         }
 
-        _binding!!.btnSearchByPhoto.setOnClickListener { v: View ->
-            startTakePhotoIntent(v)
-        }
+
     }
 
     private fun cameraIntentOnResult(result: ActivityResult) {
@@ -104,12 +110,13 @@ class SearchFragment : Fragment() {
             Log.d("Track", "camera.resultCode != RESULT_OK")
             return
         }
-//        if (result.data == null) {
-//            Log.d("Track", "result.data == null")
-//            return
-//        }
 
-        val bitmapImg = cameraHQ.getTakenPhoto()
+//        val bitmapImg = cameraHQ.getTakenPhoto()
+        val bitmapImg = cameraHQ.getFileProviderImg()
+        if (bitmapImg == null) {
+            Log.d("Track", "bitmapImg == null")
+            return
+        }
 
         val coroutineScope = CoroutineScope(Dispatchers.Default)
         try {
@@ -235,10 +242,6 @@ class SearchFragment : Fragment() {
         }
 
         Log.d("Track", "getRecommendationsBarcode finish")
-    }
-
-    fun startTakePhotoIntent(v: View?) {
-        cameraHQ.onTakePhotoClick(startForResult)
     }
 
     fun showUrlPopup(itemUrl: String) {
