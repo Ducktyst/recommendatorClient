@@ -1,13 +1,10 @@
 package com.recommendatorclient
 
 import android.app.Activity
-import android.content.ActivityNotFoundException
 import android.content.Intent
-import android.graphics.Bitmap
+import android.graphics.BitmapFactory
 import android.net.Uri
 import android.os.Bundle
-import android.provider.MediaStore
-import android.provider.Settings
 import android.util.Log
 import android.view.LayoutInflater
 import android.view.View
@@ -18,19 +15,12 @@ import androidx.activity.result.contract.ActivityResultContracts
 import androidx.appcompat.app.AlertDialog
 import androidx.fragment.app.Fragment
 import androidx.lifecycle.ViewModelProvider
-import androidx.navigation.fragment.findNavController
 import androidx.recyclerview.widget.LinearLayoutManager
-import coil.load
-import coil.transform.CircleCropTransformation
-import com.karumi.dexter.Dexter
-import com.karumi.dexter.MultiplePermissionsReport
-import com.karumi.dexter.PermissionToken
-import com.karumi.dexter.listener.PermissionRequest
-import com.karumi.dexter.listener.multi.MultiplePermissionsListener
 import com.recommendatorclient.databinding.FragmentSearchBinding
 import com.recommendatorclient.recommendation_service.RecommendatorApiClient
 import com.recommendatorclient.recommendation_service.models.Recommendation
 import com.recommendatorclient.recommendator_activity.*
+import com.recommendatorclient.recommendator_activity.CameraComponent.CameraHQ
 import io.ktor.client.*
 import io.ktor.client.call.*
 import io.ktor.client.engine.cio.*
@@ -39,15 +29,19 @@ import io.ktor.client.plugins.contentnegotiation.*
 import io.ktor.client.request.*
 import io.ktor.client.statement.*
 import io.ktor.serialization.gson.*
-import kotlinx.coroutines.*
-import java.io.File
+import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.launch
+import java.io.FileNotFoundException
 import java.io.IOException
+
 
 /**
  * A simple [Fragment] subclass as the default destination in the navigation.
  */
 class SearchFragment : Fragment() {
 
+    private val FILE_NAME: String = "FILE_NAME.png"
     private var _binding: FragmentSearchBinding? = null
 
     private lateinit var _viewModel: RecommendatorViewModel
@@ -57,6 +51,10 @@ class SearchFragment : Fragment() {
 
     private lateinit var startForResult: ActivityResultLauncher<Intent>
 
+    private var mCurrentPhotoPath: String = ""
+
+    private lateinit var cameraHQ: CameraHQ
+
     // This property is only valid between onCreateView and
     // onDestroyView.
     private val binding get() = _binding!!
@@ -65,11 +63,11 @@ class SearchFragment : Fragment() {
         inflater: LayoutInflater, container: ViewGroup?,
         savedInstanceState: Bundle?
     ): View {
-
         _binding = FragmentSearchBinding.inflate(inflater, container, false)
+        cameraHQ = CameraHQ(this.requireActivity(), apiClient)
+
         initClickListeners()
         initRecyclerView()
-
         _binding?.imageView?.isEnabled = false
 
         return binding.root
@@ -87,54 +85,54 @@ class SearchFragment : Fragment() {
         }
 
         // camera
-        checkCameraPersimiision()
-        startForResult =
-            registerForActivityResult(ActivityResultContracts.StartActivityForResult()) { result: ActivityResult ->
-                Log.d("Track", "recommendationsPost start")
-                if (result.resultCode != Activity.RESULT_OK) {
-                    Log.d("Track", "camera.resultCode != RESULT_OK")
-                }
-                if (result.data == null) {
-                    return@registerForActivityResult
-                }
+        cameraHQ.checkCameraPermission()
 
-                val bitmapImg = result.data?.extras?.get("data") as Bitmap
-
-                _binding?.imageView?.load(bitmapImg) {
-                    crossfade(true)
-                    crossfade(1000)
-                    transformations(CircleCropTransformation())
-                }
-                _binding?.imageView?.isEnabled = true
-
-                // request
-                val coroutineScope = CoroutineScope(Dispatchers.Default)
-                coroutineScope.launch(Dispatchers.IO) {
-                    try {
-                        Log.d("Track", "recommendationsPost start request")
-                        val respRecommendations: ArrayList<Recommendation> = apiClient.recommendationsPost(bitmapImg)
-                        Log.d("response", "recommendationsPost end request")
-
-                        coroutineScope.launch(Dispatchers.Main) {
-                            applyRecommendations(respRecommendations)
-                        }
-                    } catch (e: NoTransformationFoundException) {
-                        e.printStackTrace()
-                    } finally {
-                        coroutineScope.launch(Dispatchers.Main) {
-                            enableButtons()
-                        }
-                    }
-
-                }
-                Log.d("Track", "recommendationsPost end")
-
-
-            }
-        _binding!!.btnSearchByPhoto.setOnClickListener { v: View ->
-            postRecommendationsImage(v)
+        startForResult = registerForActivityResult(ActivityResultContracts.StartActivityForResult())
+        { result: ActivityResult ->
+            cameraIntentOnResult(result)
+            return@registerForActivityResult
         }
 
+        _binding!!.btnSearchByPhoto.setOnClickListener { v: View ->
+            startTakePhotoIntent(v)
+        }
+    }
+
+    private fun cameraIntentOnResult(result: ActivityResult) {
+        Log.d("Track", "recommendationsPost start")
+        if (result.resultCode != Activity.RESULT_OK) {
+            Log.d("Track", "camera.resultCode != RESULT_OK")
+            return
+        }
+//        if (result.data == null) {
+//            Log.d("Track", "result.data == null")
+//            return
+//        }
+
+        val bitmapImg = cameraHQ.getTakenPhoto()
+
+        val coroutineScope = CoroutineScope(Dispatchers.Default)
+        try {
+            // request
+            coroutineScope.launch(Dispatchers.IO) {
+                Log.d("Track", "recommendationsPost start request")
+                val respRecommendations: ArrayList<Recommendation> = apiClient.recommendationsPost(bitmapImg)
+                Log.d("response", "recommendationsPost end request")
+
+                coroutineScope.launch(Dispatchers.Main) {
+                    applyRecommendations(respRecommendations)
+                }
+            }
+            Log.d("Track", "recommendationsPost end")
+        } catch (e: FileNotFoundException) {
+            e.printStackTrace() // TODO Auto-generated catch block
+        } catch (e: NoTransformationFoundException) {
+            e.printStackTrace()
+        } finally {
+            coroutineScope.launch(Dispatchers.Main) {
+                enableButtons()
+            }
+        }
     }
 
     private fun initRecyclerView() {
@@ -169,9 +167,9 @@ class SearchFragment : Fragment() {
     override fun onViewCreated(view: View, savedInstanceState: Bundle?) {
         super.onViewCreated(view, savedInstanceState)
 
-        binding.buttonFirst.setOnClickListener {
-            findNavController().navigate(R.id.action_FirstFragment_to_SecondFragment)
-        }
+//        binding.buttonFirst.setOnClickListener {
+//            findNavController().navigate(R.id.action_FirstFragment_to_SecondFragment)
+//        }
     }
 
     override fun onDestroyView() {
@@ -184,15 +182,13 @@ class SearchFragment : Fragment() {
         if (barcode == "") {
             return
         }
-
+        // TODO: move to apiClient
         getRecommendationsBarcode(barcode)
     }
 
     fun getRecommendationsBarcode(barcode: String) {
         Log.d("Track", "getRecommendationsBarcode start")
-
-        val host: String = "https://08b3-87-76-11-149.eu.ngrok.io" // TODO: ...
-        val url = "$host/api/recommendations/{barcode}".replace("{" + "barcode" + "}", barcode)
+        val url = "${apiClient.host}/api/recommendations/{barcode}".replace("{" + "barcode" + "}", barcode)
 
         disableButtons()
         val coroutineScope = CoroutineScope(Dispatchers.Default)
@@ -214,31 +210,17 @@ class SearchFragment : Fragment() {
                     }
 
                     val resp: HttpResponse = client.get(url)
-                    // deserialize to ArrayList<Recommendation>
                     Log.d(
                         "Track",
-                        "resp ${url.replace(host, "")} ${resp.status} ${resp.bodyAsText().subSequence(0, 30)}"
+                        "resp ${url.replace(apiClient.host, "")} ${resp.status} ${resp.bodyAsText().subSequence(0, 30)}"
                     )
+                    // deserialize to ArrayList<Recommendation>
                     val respRecommendations: ArrayList<Recommendation> = resp.body()
-//                    client.close()
-                    val recommendations = ArrayList<RecommendationModel>()
-                    if (respRecommendations != null) {
-                        for (r in respRecommendations) {
-                            recommendations.add(
-                                RecommendationModel(
-                                    productName = r.articul,
-                                    shopName = r.shopName,
-                                    price = r.price.toString(),
-                                    url = r.url,
-                                )
-                            )
-                        }
-                    }
+                    client.close()
 
                     val j2 = launch(Dispatchers.Main) {
                         Log.d("Track", "pong barcode" + "resp ${resp.status}")
-                        _viewModel.setRecommendations(recommendations)
-                        mAdapter.setRecommendations(recommendations)
+                        applyRecommendations(respRecommendations)
                         enableButtons()
                     }
                     j2.join()
@@ -255,79 +237,8 @@ class SearchFragment : Fragment() {
         Log.d("Track", "getRecommendationsBarcode finish")
     }
 
-    fun getRecommendationsBarcode2(barcode: String) {
-        Log.d("Track", "getRecommendationsBarcode start")
-
-        val url = "$host/api/recommendations/{barcode}".replace("{" + "barcode" + "}", barcode)
-
-        disableButtons()
-        val coroutineScope = CoroutineScope(Dispatchers.Default)
-        runBlocking {
-
-            try {
-                val reqJob = coroutineScope.async(Dispatchers.Default) {
-                    val job = launch(Dispatchers.IO) {
-                        val client = HttpClient(CIO) {
-                            install(HttpTimeout) {
-                                requestTimeoutMillis = 20 * 60000 // N*min
-                                socketTimeoutMillis = 20 * 60000
-                                connectTimeoutMillis = 20 * 60000
-                            }
-                            engine {
-                                requestTimeout = 0 // 0 to disable, or a millisecond value to fit your needs
-                            }
-                            install(ContentNegotiation) {
-                                gson()
-                            }
-                        }
-
-                        val resp: HttpResponse = client.get(url)
-                        // deserialize to ArrayList<Recommendation>
-                        var respRecommendations: ArrayList<Recommendation> = resp.body()
-                        client.close()
-                        val j2 = launch(Dispatchers.Main) {
-                            Log.d("Track", "pong barcode" + "resp ${resp.status}")
-                            applyRecommendations(respRecommendations)
-                            enableButtons()
-                        }
-                        j2.join()
-
-                    }
-
-                    job.join()
-                    return@async null
-                }
-                val empty = reqJob.await()
-            } catch (e: IOException) {
-                e.printStackTrace()
-                Log.d("Track", "getRecommendationsBarcode ex $e")
-            }
-        }
-        Log.d("Track", "getRecommendationsBarcode finish")
-    }
-
-    private fun applyRecommendations(respRecommendations: java.util.ArrayList<Recommendation>) {
-        var recommendations = ArrayList<RecommendationModel>()
-        for (r in respRecommendations) {
-            recommendations.add(
-                RecommendationModel(
-                    productName = r.articul,
-                    shopName = r.shopName,
-                    price = r.price.toString(),
-                    url = r.url,
-                )
-            )
-        }
-        _viewModel.setRecommendations(recommendations)
-        mAdapter.setRecommendations(recommendations)
-    }
-
-    fun postRecommendationsImage(v: View?) {
-        disableButtons()
-
-        val file = File("path/to/some.file")
-        val chatId = "123"
-        val img = camera()
+    fun startTakePhotoIntent(v: View?) {
+        cameraHQ.onTakePhotoClick(startForResult)
     }
 
     fun showUrlPopup(itemUrl: String) {
@@ -336,14 +247,12 @@ class SearchFragment : Fragment() {
             .setTitle("Товар")
             .setMessage("Карточка товара в магазине")
             .setPositiveButton("Открыть ссылку в браузере") { dialog, id ->
-                val browserIntent: Intent = Intent(Intent.ACTION_VIEW, Uri.parse(itemUrl));
-                startActivity(browserIntent)
+                startActivity(Intent(Intent.ACTION_VIEW, Uri.parse(itemUrl)))
                 dialog.cancel()
             }
             .setNegativeButton("Отмена") { dialog, id ->
                 dialog.cancel()
             }
-
 
         builder.create()
         builder.show()
@@ -361,54 +270,19 @@ class SearchFragment : Fragment() {
         _binding?.btnPingGoogle?.isActivated = true
     }
 
-    private fun checkCameraPersimiision() {
-        Dexter.withContext(this.context)
-            .withPermissions(
-                android.Manifest.permission.READ_EXTERNAL_STORAGE,
-                android.Manifest.permission.CAMERA
-            ).withListener(
-                object : MultiplePermissionsListener {
-                    override fun onPermissionsChecked(report: MultiplePermissionsReport?) {
-                        report?.let {
-                            if (report.areAllPermissionsGranted()) {
-//                                camera()
-                            } else {
-                                showRotationalDialogForPermission()
-                            }
-                        }
-                    }
-
-                    override fun onPermissionRationaleShouldBeShown(
-                        p0: MutableList<PermissionRequest>?,
-                        p1: PermissionToken?
-                    ) {
-                        showRotationalDialogForPermission()
-                    }
-                }
-            ).onSameThread().check()
+    private fun applyRecommendations(respRecommendations: java.util.ArrayList<Recommendation>) {
+        var recommendations = ArrayList<RecommendationModel>()
+        for (r in respRecommendations) {
+            recommendations.add(
+                RecommendationModel(
+                    productName = r.articul,
+                    shopName = r.shopName,
+                    price = r.price.toString(),
+                    url = r.url,
+                )
+            )
+        }
+        mAdapter.setRecommendations(recommendations)
     }
 
-    private fun camera() {
-        val intent = Intent(MediaStore.ACTION_IMAGE_CAPTURE)
-        startForResult.launch(intent)
-    }
-
-    private fun showRotationalDialogForPermission() {
-        AlertDialog.Builder(this.requireContext())
-            .setMessage(
-                "Похоже, что вы отключили разрешения необходимые для этой возможности." +
-                        "Их можно включить в системных настройках для приложения!"
-            ).setPositiveButton("Открыть настройки") { dialog, id ->
-                try {
-                    val intent = Intent(Settings.ACTION_APPLICATION_DETAILS_SETTINGS)
-                    val uri = Uri.fromParts("package", activity?.packageName, null)
-                    intent.data = uri
-                    startActivity(intent)
-                } catch (e: ActivityNotFoundException) {
-                    e.printStackTrace()
-                }
-            }.setNegativeButton("Отмеена") { dialog, id ->
-                dialog.dismiss()
-            }.show()
-    }
 }

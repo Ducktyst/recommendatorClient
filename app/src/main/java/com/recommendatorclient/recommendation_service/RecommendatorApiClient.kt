@@ -1,5 +1,6 @@
 package com.recommendatorclient.recommendation_service
 
+import android.R.attr.bitmap
 import android.graphics.Bitmap
 import android.util.Log
 import com.recommendatorclient.recommendation_service.models.Recommendation
@@ -18,11 +19,9 @@ import io.ktor.utils.io.core.*
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
-import okhttp3.MediaType
-import okhttp3.internal.closeQuietly
-import java.io.ByteArrayOutputStream
 import java.io.IOException
-import kotlin.io.use
+import java.nio.ByteBuffer
+
 
 class RecommendatorApiClient(var host: String = "https://08b3-87-76-11-149.eu.ngrok.io") {
     val client = HttpClient(CIO) {
@@ -133,9 +132,8 @@ class RecommendatorApiClient(var host: String = "https://08b3-87-76-11-149.eu.ng
         // TOOD: error handling
         val url = "$host/api/recommendations"
 
-        val stream = ByteArrayOutputStream()
-        img.compress(Bitmap.CompressFormat.PNG, 100, stream)
-        val image = stream.toByteArray()
+        val byteArray = bitmapToByteArray(img)
+
         Log.d("Track", "$url")
         val resp: HttpResponse = client.request {
             url(url)
@@ -144,7 +142,7 @@ class RecommendatorApiClient(var host: String = "https://08b3-87-76-11-149.eu.ng
                 formData {
                     append(
                         "content",
-                        image,
+                        byteArray,
                         Headers.build {
                             append(HttpHeaders.ContentType, "image/png") // Mime type required
                             append(HttpHeaders.ContentDisposition, "filename=\"img.png\"")
@@ -164,6 +162,16 @@ class RecommendatorApiClient(var host: String = "https://08b3-87-76-11-149.eu.ng
 
         val respRecommendations: ArrayList<Recommendation> = resp.body()
         return respRecommendations
+    }
+
+    private fun bitmapToByteArray(img: Bitmap): ByteArray {
+        val size: Int = img.getRowBytes() * img.getHeight()
+        val byteBuffer: ByteBuffer = ByteBuffer.allocate(size)
+        img.copyPixelsToBuffer(byteBuffer)
+        val byteArray = byteBuffer.array()
+
+        return byteArray
+
     }
 
 
