@@ -124,7 +124,8 @@ class SearchFragment : Fragment() {
             return
         }
 
-        val bitmapImg = cameraHQ.getTakenPhoto()
+//        val bitmapImg = cameraHQ.getTakenPhoto()
+        val bitmapImg = cameraHQ.getTakenPhotoResized()
         if (bitmapImg == null) {
             Log.d("Track", "bitmapImg == null")
             return

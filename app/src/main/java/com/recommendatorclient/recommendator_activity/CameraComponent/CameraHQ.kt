@@ -102,6 +102,20 @@ class CameraHQ(val activity: FragmentActivity, val apiClient: RecommendatorApiCl
         return bitmapImg
     }
 
+    fun getTakenPhotoResized(): Bitmap? {
+        if (!this::photoFile.isInitialized) {
+            return null
+        }
+        val bitmapImg = BitmapFactory.decodeFile(photoFile.absolutePath)
+
+        val aspectRatio: Float = bitmapImg.width.toFloat() / bitmapImg.height.toFloat()
+
+        val width = 1000
+        val height = Math.round(width / aspectRatio)
+        val resizedImg = Bitmap.createScaledBitmap(bitmapImg, width, height, false)
+        return resizedImg
+    }
+
     fun getFileProviderImg(): Bitmap? {
         if (!this::photoFile.isInitialized) {
             return null

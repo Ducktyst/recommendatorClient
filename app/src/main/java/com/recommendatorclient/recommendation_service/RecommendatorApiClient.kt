@@ -134,7 +134,6 @@ class RecommendatorApiClient(var host: String = "https://08b3-87-76-11-149.eu.ng
         val url = "$host/api/recommendations"
 
 //        val byteArray = bitmapToByteArray(img)
-
         val stream = ByteArrayOutputStream()
         img.compress(Bitmap.CompressFormat.PNG, 100, stream)
         val byteArray = stream.toByteArray()
